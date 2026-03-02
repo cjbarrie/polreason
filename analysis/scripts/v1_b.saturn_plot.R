@@ -94,7 +94,7 @@ create_saturn_plot <- function(
     base_viz_dir      = BASE_VIZ_DIR,
     year              = YEAR,
     prob              = 0.5,
-    quantiles         = c(0.5, 0.75, 0.9),  # Only quantiles that will be highlighted
+    quantiles         = c(0.1, 0.3, 0.5, 0.7, 0.9),  # Only quantiles that will be highlighted
 
     highlight_gss     = TRUE,
 
@@ -333,7 +333,7 @@ create_saturn_plot <- function(
     } +
 
     # Facet by quantile (each panel shows one constraint level)
-    facet_wrap(~ quantile, nrow = 1, labeller = labeller(quantile = function(x) {
+    facet_wrap(~ quantile, nrow = 3, labeller = labeller(quantile = function(x) {
       paste0("Constraint: ", x)
     })) +
 
@@ -346,7 +346,8 @@ create_saturn_plot <- function(
       legend.direction  = "horizontal",
       legend.box.just   = "center",
 
-      legend.title      = element_text(face = "bold"),
+      legend.title      = element_text(face = "bold", size = 18),
+      legend.text       = element_text(size = 16),
       panel.grid        = element_blank(),
 
       # Facet strip styling
@@ -373,7 +374,7 @@ create_saturn_plot <- function(
       scale_color_manual(values = hi_palette, name = "Highlighted models") +
       guides(
         color = guide_legend(
-          ncol = 4,          # More columns for horizontal layout across facets
+          ncol = 3,          # More columns for horizontal layout across facets
           byrow = TRUE,
           title.position = "top",
           title.hjust = 0.5,
@@ -394,8 +395,8 @@ create_saturn_plot <- function(
     dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
     message("Saving: ", output_file)
     
-    # Wide layout for 3 horizontal facets (Q50, Q75, Q90)
-    ggsave(filename = output_file, plot = p, width = 16, height = 8, device = "pdf")
+    # 2 cols × 3 rows layout for 6 quantile facets
+    ggsave(filename = output_file, plot = p, width = 12, height = 20, device = "pdf")
   }
   
   # Save summaries
@@ -588,6 +589,261 @@ create_saturn_facet_grid <- function(
 
 
 ################################################################################
+# Belief Pair Facet Grid — All pairwise correlations as individual panels
+################################################################################
+
+#' Extract pairwise correlations from a correlation matrix
+extract_pairwise_cors <- function(R) {
+  if (is.null(R)) return(NULL)
+  R <- as.matrix(R)
+  vars <- colnames(R)
+  if (is.null(vars) || length(vars) < 2) return(NULL)
+
+  pairs <- which(upper.tri(R), arr.ind = TRUE)
+
+  data.table(
+    var1 = vars[pairs[, 1]],
+    var2 = vars[pairs[, 2]],
+    rho  = R[pairs]
+  )
+}
+
+#' Compute median pairwise correlations across bootstrap samples
+compute_median_pairwise_cors <- function(corr_list) {
+  all_pairs <- rbindlist(lapply(corr_list, extract_pairwise_cors), fill = TRUE)
+  if (nrow(all_pairs) == 0) return(NULL)
+
+  median_pairs <- all_pairs[, .(median_rho = median(rho, na.rm = TRUE)),
+                            by = .(var1, var2)]
+
+  median_pairs[, pair_label := mapply(function(a, b) {
+    paste(sort(c(a, b)), collapse = " × ")
+  }, var1, var2)]
+
+  median_pairs
+}
+
+#' Create belief pair facet grid
+#'
+#' Each panel shows one belief pair (var1 × var2) with LLMs in faint grey and GSS in black.
+#' @param pairs_per_page Number of pairs per page (NULL = all on one page)
+#' @param page_ncol Number of columns per page (default 8)
+#' @param page_nrow Number of rows per page (default 6, so 48 pairs per page)
+#' @param compact_mode If TRUE, use compact layout for 3 landscape pages (25x18 grid)
+#' @param cell_size Size multiplier per cell (default 1.4, use smaller for compact)
+create_belief_pair_grid <- function(
+    base_out_dir      = BASE_OUT_DIR,
+    base_viz_dir      = BASE_VIZ_DIR,
+    year              = YEAR,
+    prob              = 0.5,
+    vars_subset       = NULL,
+    llm_alpha         = 0.15,
+    llm_width         = 0.3,
+    llm_color         = "gray50",
+    gss_width         = 0.8,
+    gss_color         = "black",
+    ncol              = NULL,
+    page_ncol         = 8,
+    page_nrow         = 6,
+    pairs_per_page    = NULL,
+    compact_mode      = FALSE,
+    cell_size         = 1.4,
+    save_pdf          = TRUE,
+    output_file       = NULL
+) {
+
+  message("\n=== Belief Pair Facet Grid ===")
+  message("Generating ellipses for all pairwise correlations")
+
+  raters <- available_raters(base_out_dir = base_out_dir, year = year)
+  if (!length(raters)) stop("No raters found in ", base_out_dir, " for year ", year)
+
+  message("Found ", length(raters), " raters")
+
+  all_rater_pairs <- list()
+
+  for (rater in raters) {
+    message("Processing: ", rater)
+
+    corr_list <- tryCatch(
+      load_corr_for_rater(rater = rater, base_out_dir = base_out_dir,
+                          year = year, strict = FALSE),
+      error = function(e) { warning("Could not load ", rater, ": ", e$message); NULL }
+    )
+
+    if (is.null(corr_list) || !length(corr_list)) next
+
+    median_pairs <- compute_median_pairwise_cors(corr_list)
+    if (is.null(median_pairs) || nrow(median_pairs) == 0) next
+
+    median_pairs[, rater := rater]
+    median_pairs[, is_gss := tolower(rater) == "gss"]
+
+    all_rater_pairs[[rater]] <- median_pairs
+  }
+
+  if (!length(all_rater_pairs)) stop("No pairwise correlation data loaded")
+
+  pairs_dt <- rbindlist(all_rater_pairs, use.names = TRUE, fill = TRUE)
+
+  if (!is.null(vars_subset)) {
+    pairs_dt <- pairs_dt[var1 %in% vars_subset & var2 %in% vars_subset]
+    message("Filtered to ", length(unique(pairs_dt$pair_label)), " pairs from ",
+            length(vars_subset), " variables")
+  }
+
+  n_pairs <- length(unique(pairs_dt$pair_label))
+  message("Total pairs: ", n_pairs)
+
+  if (n_pairs == 0) stop("No pairs remaining after filtering")
+
+  message("\nGenerating ellipse paths...")
+
+  ellipse_list <- list()
+
+  for (i in 1:nrow(pairs_dt)) {
+    rater_i  <- pairs_dt$rater[i]
+    pair_i   <- pairs_dt$pair_label[i]
+    rho_i    <- pairs_dt$median_rho[i]
+    is_gss_i <- pairs_dt$is_gss[i]
+
+    if (is.na(rho_i)) next
+
+    xy <- ellipse_from_rho(rho = rho_i, prob = prob, n = 181L)
+
+    ellipse_list[[paste(rater_i, pair_i, sep = "___")]] <- data.frame(
+      x = xy[, "x"], y = xy[, "y"],
+      rater = rater_i, pair_label = pair_i,
+      rho = rho_i, is_gss = is_gss_i,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  ellipse_dt <- rbindlist(ellipse_list)
+  ellipse_dt[, group_id := paste(rater, pair_label, sep = "___")]
+
+  # Order pairs by median LLM correlation: high positive → zero → high negative
+  # (thin diagonal-right → circular → thin diagonal-left)
+  llm_pair_rho <- ellipse_dt[is_gss == FALSE, .(median_llm_rho = median(rho, na.rm = TRUE)),
+                              by = pair_label]
+  llm_pair_rho <- llm_pair_rho[order(-median_llm_rho)]  # descending: positive first
+  pair_levels <- llm_pair_rho$pair_label
+
+  # Filter to only pairs that have LLM data (exclude GSS-only pairs)
+  ellipse_dt <- ellipse_dt[pair_label %in% pair_levels]
+
+  ellipse_dt[, pair_label := factor(pair_label, levels = pair_levels)]
+
+  gss_dt <- ellipse_dt[is_gss == TRUE]
+  llm_dt <- ellipse_dt[is_gss == FALSE]
+
+  n_pairs <- length(unique(ellipse_dt$pair_label))  # update after filtering
+  message("Pairs with LLM data: ", n_pairs)
+  message("Ordering: high positive rho → zero → high negative rho")
+
+  r0 <- sqrt(qchisq(prob, df = 2))
+  lim <- 1.3 * r0
+
+  # Compact mode: dense grid with readable labels (~10 wide landscape pages)
+
+  if (compact_mode) {
+    page_ncol <- 20
+    page_nrow <- 9
+    cell_size <- 0.95
+    message("\nCompact mode: targeting ~10 landscape pages (20 cols × 9 rows = 180 pairs/page)")
+  }
+
+  # Determine pagination
+  if (is.null(pairs_per_page)) {
+    pairs_per_page <- page_ncol * page_nrow
+  }
+
+  # Split pairs into pages
+  n_pages <- ceiling(n_pairs / pairs_per_page)
+
+  if (n_pages == 1) {
+    # Single page - use original behavior
+    if (is.null(ncol)) ncol <- ceiling(sqrt(n_pairs * 1.5))
+    message("\nCreating single-page grid with ", ncol, " columns...")
+  } else {
+    ncol <- page_ncol
+    message("\nCreating ", n_pages, " pages with ", page_ncol, " cols x ", page_nrow, " rows each...")
+  }
+
+  # Build list of plots (one per page)
+  plots <- list()
+
+  for (page in seq_len(n_pages)) {
+    start_idx <- (page - 1) * pairs_per_page + 1
+    end_idx <- min(page * pairs_per_page, n_pairs)
+    page_pairs <- pair_levels[start_idx:end_idx]
+
+    page_llm_dt <- llm_dt[pair_label %in% page_pairs]
+    page_gss_dt <- gss_dt[pair_label %in% page_pairs]
+
+    # Re-factor to only include this page's pairs (keeps facet order)
+    page_llm_dt[, pair_label := factor(pair_label, levels = page_pairs)]
+    page_gss_dt[, pair_label := factor(pair_label, levels = page_pairs)]
+
+    p <- ggplot() +
+      geom_path(data = page_llm_dt, aes(x, y, group = group_id),
+                color = llm_color, alpha = llm_alpha,
+                linewidth = if (compact_mode) 0.2 else llm_width, lineend = "round") +
+      {if (nrow(page_gss_dt) > 0) geom_path(data = page_gss_dt, aes(x, y, group = group_id),
+                color = gss_color, alpha = 1.0,
+                linewidth = if (compact_mode) 0.5 else gss_width, lineend = "round")} +
+      facet_wrap(~ pair_label, ncol = ncol) +
+      coord_equal(xlim = c(-lim, lim), ylim = c(-lim, lim), expand = FALSE) +
+      theme_void() +
+      theme(
+        strip.text = element_text(size = if (compact_mode) 4 else 7, margin = margin(1, 0, 1, 0)),
+        strip.background = element_blank(),
+        legend.position = "none",
+        plot.margin = if (compact_mode) margin(5, 5, 5, 5) else margin(10, 10, 10, 10),
+        panel.spacing = unit(if (compact_mode) 0.15 else 0.3, "lines")
+      )
+
+    plots[[page]] <- p
+  }
+
+  if (save_pdf) {
+    mvn_dir <- file.path(base_viz_dir, sprintf("mvn_%d", year))
+    dir.create(mvn_dir, recursive = TRUE, showWarnings = FALSE)
+
+    # Calculate dimensions per page (landscape for compact mode)
+    width  <- page_ncol * cell_size + 0.5
+    height <- page_nrow * cell_size + 0.5
+
+    for (page in seq_len(n_pages)) {
+      if (n_pages == 1) {
+        out_file <- file.path(mvn_dir, "belief_pair_grid.pdf")
+      } else if (compact_mode) {
+        out_file <- file.path(mvn_dir, sprintf("belief_pair_grid_compact_%d.pdf", page))
+      } else {
+        out_file <- file.path(mvn_dir, sprintf("belief_pair_grid%d.pdf", page))
+      }
+
+      start_idx <- (page - 1) * pairs_per_page + 1
+      end_idx <- min(page * pairs_per_page, n_pairs)
+      n_page_pairs <- end_idx - start_idx + 1
+
+      message("Saving page ", page, "/", n_pages, ": ", out_file,
+              " (pairs ", start_idx, "-", end_idx, ")")
+
+      ggsave(filename = out_file, plot = plots[[page]], width = width, height = height,
+             device = "pdf", limitsize = FALSE)
+    }
+
+    orientation <- if (width > height) "landscape" else "portrait"
+    message("\nDimensions per page: ", round(width, 1), " x ", round(height, 1), " inches (", orientation, ")")
+  }
+
+  message("\n=== Belief Pair Grid Complete ===\n")
+  invisible(plots)
+}
+
+
+################################################################################
 # MAIN EXECUTION
 ################################################################################
 
@@ -602,10 +858,10 @@ if (exists("BASE_OUT_DIR") && exists("BASE_VIZ_DIR") && exists("YEAR")) {
     base_viz_dir   = BASE_VIZ_DIR,
     year           = YEAR,
     prob           = 0.5,
-    quantiles      = c(0.5, 0.75, 0.9),  # Only compute quantiles we'll highlight
+    quantiles      = c(0.15, 0.3, 0.5, 0.65, 0.8, 0.95),  # Six quantiles
 
     # Option C controls
-    relevant_q     = c("Q90", "Q75", "Q50"),
+    relevant_q     = c("Q95", "Q80", "Q65", "Q50", "Q30", "Q15"),
     delta_min      = 0.10,    # increase to highlight fewer, decrease to highlight more
     top_n_per_q    = 6L,      # set NULL to keep all above threshold
     
@@ -622,6 +878,21 @@ if (exists("BASE_OUT_DIR") && exists("BASE_VIZ_DIR") && exists("YEAR")) {
     quantile_seq   = seq(0.95, 0.05, by = -0.05),  # 19 quantiles, all in one row
     llm_color      = "steelblue",
     llm_alpha      = 0.3,
+    save_pdf       = TRUE
+  )
+
+  # Belief pair grid - COMPACT VERSION for appendix (~10 landscape pages)
+  # With readable labels at 15×12 = 180 pairs per page
+  belief_pair_grid_compact <- create_belief_pair_grid(
+    base_out_dir   = BASE_OUT_DIR,
+    base_viz_dir   = BASE_VIZ_DIR,
+    year           = YEAR,
+    prob           = 0.5,
+    vars_subset    = NULL,
+    llm_alpha      = 0.15,
+    llm_color      = "gray50",
+    gss_color      = "black",
+    compact_mode   = TRUE,      # 3 landscape pages (25 cols × 18 rows)
     save_pdf       = TRUE
   )
 

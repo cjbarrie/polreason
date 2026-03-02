@@ -284,9 +284,11 @@ plot_half_violins_two_conditions <- function(
     out_file,
     full_label,
     reduced_label,
-    full_color    = "dodgerblue",
-    reduced_color = "orange",
-    legend_pos    = "topright"
+    full_color    = "#A6CEE3",
+    reduced_color = "#FDB863",
+    legend_pos    = "topright",
+    lolli_pad_frac   = -0.01,
+    lolli_width_frac = 0.14
 ) {
   stopifnot(is.data.frame(dt))
   if (!("rater" %in% names(dt))) stop("plot_half_violins_two_conditions() requires a 'rater' column.")
@@ -336,7 +338,7 @@ plot_half_violins_two_conditions <- function(
     x_range <- x_range + c(-pad, pad)
   }
   
-  pdf_width  <- 15
+  pdf_width  <- 11
   pdf_height <- max(3, 0.3 * n_raters + 1)
   
   grDevices::pdf(out_file, width = pdf_width, height = pdf_height)
@@ -345,17 +347,23 @@ plot_half_violins_two_conditions <- function(
   op <- par(no.readonly = TRUE)
   on.exit(par(op), add = TRUE)
   
-  par(mar = c(4, 17.5, 4, 12), xpd = NA)
+  par(mar = c(4, 18, 4, 8), xpd = NA)
   
   plot(
     NA,
     xlim = x_range,
-    ylim = c(0.5, n_raters + 0.5),
+    ylim = c(0.5, n_raters + 0.9),
     xlab = xlab,
     ylab = "",
     yaxt = "n",
-    main = main
+    main = main,
+    bty  = "n"
   )
+  
+  usr <- par("usr")
+  segments(usr[1], usr[3], usr[2], usr[3])  # bottom
+  segments(usr[1], usr[4], usr[2], usr[4])  # top
+  segments(usr[1], usr[3], usr[1], usr[4])  # left
   axis(2, at = seq_len(n_raters), labels = raters_order, las = 2)
 
   # Draw vertical gridlines ONLY inside the plot panel (no bleed into margins)
@@ -364,7 +372,7 @@ plot_half_violins_two_conditions <- function(
   op_xpd <- par(xpd = FALSE)  # clip to plot region
   usr <- par("usr")
   segments(x0 = grid_x, y0 = usr[3], x1 = grid_x, y1 = usr[4],
-           col = "grey90", lwd = 0.5)
+           col = "grey92", lwd = 0.45)
   par(op_xpd)
   
   # Restore margin drawing for right-side delta labels
@@ -373,12 +381,15 @@ plot_half_violins_two_conditions <- function(
   
   max_width <- 0.4
   usr <- par("usr")
-  x_text <- usr[2] + 0.02 * diff(usr[1:2])
   
-  fmt_delta <- function(m, l, u) {
-    if (!is.finite(m) || !is.finite(l) || !is.finite(u)) return("delta = NA")
-    sprintf("delta = %.3f [%.3f, %.3f]", m, l, u)
-  }
+  # Lollipop layout (to the right of the plot area)
+  x_right <- usr[2]
+  lolli_pad    <- lolli_pad_frac * diff(usr[1:2])
+  lolli_width  <- lolli_width_frac * diff(usr[1:2])
+  lolli_center <- x_right + lolli_pad + (lolli_width / 2)
+  
+  max_abs_delta <- max(abs(delta_dt$delta_median), na.rm = TRUE)
+  if (!is.finite(max_abs_delta) || max_abs_delta == 0) max_abs_delta <- 1
   
   draw_half <- function(vals, base_y, fill_col) {
     vals <- vals[is.finite(vals)]
@@ -401,18 +412,42 @@ plot_half_violins_two_conditions <- function(
     draw_half(reduced_vals, i, reduced_color)
     if (any(is.finite(reduced_vals))) {
       med_reduced <- stats::median(reduced_vals, na.rm = TRUE)
-      segments(med_reduced, i, med_reduced, i + max_width * 1.05, lwd = 2.5, col = reduced_color)
+      segments(med_reduced, i, med_reduced, i + max_width * 1.05, lwd = 1.8, col = reduced_color)
     }
     
     draw_half(full_vals, i, full_color)
     if (any(is.finite(full_vals))) {
       med_full <- stats::median(full_vals, na.rm = TRUE)
-      segments(med_full, i, med_full, i + max_width * 1.05, lwd = 2.5, col = full_color)
+      segments(med_full, i, med_full, i + max_width * 1.05, lwd = 1.8, col = full_color)
     }
     
     drow <- delta_dt[rater == r]
-    lab <- fmt_delta(drow$delta_median, drow$delta_lower, drow$delta_upper)
-    text(x = x_text, y = i, labels = lab, adj = c(0, 0.5), cex = 0.95)
+    if (nrow(drow) == 1L && is.finite(drow$delta_median)) {
+      delta_val <- drow$delta_median
+      x_end <- lolli_center + (delta_val / max_abs_delta) * (lolli_width / 2)
+      
+      sig_delta <- is.finite(drow$delta_lower) && is.finite(drow$delta_upper) &&
+        (drow$delta_lower > 0 || drow$delta_upper < 0)
+      delta_col <- if (sig_delta) "black" else "grey60"
+      
+      if (is.finite(drow$delta_lower) && is.finite(drow$delta_upper)) {
+        x_lwr <- lolli_center + (drow$delta_lower / max_abs_delta) * (lolli_width / 2)
+        x_upr <- lolli_center + (drow$delta_upper / max_abs_delta) * (lolli_width / 2)
+        segments(x0 = x_lwr, x1 = x_upr, y0 = i, y1 = i, lwd = 0.9, col = delta_col)
+        segments(x0 = x_lwr, x1 = x_lwr, y0 = i - 0.08, y1 = i + 0.08, lwd = 0.9, col = delta_col)
+        segments(x0 = x_upr, x1 = x_upr, y0 = i - 0.08, y1 = i + 0.08, lwd = 0.9, col = delta_col)
+      }
+      
+      segments(x0 = lolli_center, x1 = x_end, y0 = i, y1 = i, lwd = 1.2, col = delta_col)
+      points(x = x_end, y = i, pch = 16, cex = 0.8, col = delta_col)
+      text(
+        x = x_end,
+        y = i + 0.25,
+        labels = sprintf("%.3f", delta_val),
+        cex = 0.75,
+        col = delta_col
+      )
+    }
   }
   
   legend(
@@ -617,6 +652,9 @@ nonpersona_cumvar_for_rater <- function(
   cum_persona_mat <- cum_tot_mat - cum_non_mat
   med_per   <- col_med(cum_persona_mat); low_per <- col_low(cum_persona_mat); high_per <- col_high(cum_persona_mat)
   
+  diff_mat <- cum_non_mat - cum_persona_mat
+  med_diff <- col_med(diff_mat); low_diff <- col_low(diff_mat); high_diff <- col_high(diff_mat)
+  
   share_tot_mat <- cbind(
     cum_tot_mat[, 1, drop = FALSE],
     cum_tot_mat[, -1, drop = FALSE] - cum_tot_mat[, -max_len, drop = FALSE]
@@ -638,6 +676,9 @@ nonpersona_cumvar_for_rater <- function(
     cum_persona_med  = med_per,
     cum_persona_low  = low_per,
     cum_persona_high = high_per,
+    diff_med         = med_diff,
+    diff_low         = low_diff,
+    diff_high        = high_diff,
     share_total_med  = share_tot_med,
     share_total_low  = share_tot_low,
     share_total_high = share_tot_high
@@ -788,13 +829,13 @@ constraint_dt <- data.table::rbindlist(
   use.names = TRUE, fill = TRUE
 )
 
-if (nrow(constraint_dt)) {
+if (nrow(constraint_dt) && !isTRUE(get0("SKIP_V2B_PLOTS", ifnotfound = FALSE))) {
   plot_half_violins_two_conditions(
     dt            = constraint_dt,
     full_col      = "pc1_beliefs",
     reduced_col   = "pc1_beliefs_cond",
     xlab          = "PC1 share of variance among beliefs",
-    main          = "Belief PC1: unconditional vs conditional on persona",
+    main          = "",
     out_file      = file.path(viz_dir, sprintf("pc1_beliefs_conditional_%s.pdf", year)),
     full_label    = "Beliefs (unconditional)",
     reduced_label = "Beliefs | persona",
@@ -946,54 +987,117 @@ gss_bg_comp <- merge(
 # Re-impose facet ordering for background data (defensive)
 gss_bg_comp[, rater := factor(as.character(rater), levels = ordered_raters)]
 
-out_file_non_cum <- file.path(viz_dir, sprintf("nonpersona_cumulative_pc_share_%s.pdf", year))
-grDevices::pdf(out_file_non_cum, width = 17.5, height = 15)  # landscape
-
-p <- 
-ggplot2::ggplot(df_comp, ggplot2::aes(x = pc_index, group = interaction(edu_series, component))) +
-  ggplot2::geom_line(
-    data = gss_bg_comp,
-    ggplot2::aes(
-      x = pc_index,
-      y = cum_med,
-      group = interaction(edu_series, component),
-      colour = edu_series,
-      linetype = component
-    ),
-    linewidth = 0.9,
-    alpha = 0.12,
-    show.legend = FALSE
-  ) +
-  ggplot2::geom_ribbon(
-    ggplot2::aes(ymin = cum_low, ymax = cum_high, fill = edu_series),
-    alpha = 0.20, colour = NA
-  ) +
-  ggplot2::geom_line(
-    ggplot2::aes(y = cum_med, colour = edu_series, linetype = component),
-    linewidth = 0.7,
-    alpha = 0.70
-  ) +
-  ggplot2::scale_colour_manual(name = "Rater × education", values = edu_colours) +
-  ggplot2::scale_fill_manual(name = "Rater × education", values = edu_colours) +
-  ggplot2::scale_linetype_manual(name = "Component", values = c("Non-persona" = "solid", "Persona" = "dashed")) +
-  ggplot2::scale_x_continuous(breaks = pc_breaks5, minor_breaks = NULL) +
-  ggplot2::coord_cartesian(ylim = c(0, max(df_comp$cum_high, na.rm = TRUE))) +
-  ggplot2::facet_wrap(~ rater, ncol = 5) +
+if (!isTRUE(get0("SKIP_V2B_PLOTS", ifnotfound = FALSE))) {
+  out_file_non_cum <- file.path(viz_dir, sprintf("nonpersona_cumulative_pc_share_%s.pdf", year))
+  grDevices::pdf(out_file_non_cum, width = 17.5, height = 15)  # landscape
+  
+  p <- 
+  ggplot2::ggplot(df_comp, ggplot2::aes(x = pc_index, group = interaction(edu_series, component))) +
+    ggplot2::geom_line(
+      data = gss_bg_comp,
+      ggplot2::aes(
+        x = pc_index,
+        y = cum_med,
+        group = interaction(edu_series, component),
+        colour = edu_series,
+        linetype = component
+      ),
+      linewidth = 0.9,
+      alpha = 0.12,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(ymin = cum_low, ymax = cum_high, fill = edu_series),
+      alpha = 0.20, colour = NA
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = cum_med, colour = edu_series, linetype = component),
+      linewidth = 0.7,
+      alpha = 0.70
+    ) +
+    ggplot2::scale_colour_manual(name = "Rater × education", values = edu_colours) +
+    ggplot2::scale_fill_manual(name = "Rater × education", values = edu_colours) +
+    ggplot2::scale_linetype_manual(name = "Component", values = c("Non-persona" = "solid", "Persona" = "dashed")) +
+    ggplot2::scale_x_continuous(breaks = pc_breaks5, minor_breaks = NULL) +
+    ggplot2::coord_cartesian(ylim = c(0, max(df_comp$cum_high, na.rm = TRUE))) +
+    ggplot2::facet_wrap(~ rater, ncol = 5) +
   ggplot2::labs(
     x     = "Principal component index",
     y     = "Cumulative share of total belief variance",
-    title = "Cumulative persona vs non-persona contributions to explained belief variance\n(colour = edu × rater type; solid = non-persona; dashed = persona)"
+    title = ""
   ) +
   ggplot2::theme_minimal(base_size = 11) +
   ggplot2::theme(
     panel.grid.minor = ggplot2::element_blank(),
     strip.text       = ggplot2::element_text(face = "bold"),
-    plot.title       = ggplot2::element_text(face = "bold"),
     legend.position  = "bottom"
   )
+  
+  print(p)
+  grDevices::dev.off()
+}
 
-print(p)
-grDevices::dev.off()
+## ---- Plot 1b: nonpersona cumulative (all models in one panel) ------------ ##
+
+if (nrow(df_comp)) {
+  out_file_non_cum_all <- file.path(viz_dir, sprintf("nonpersona_cumulative_pc_share_allinone_%s.pdf", year))
+  grDevices::pdf(out_file_non_cum_all, width = 10, height = 6)
+  
+  df_comp_overall <- df_comp[edu_group == "overall"]
+  df_comp_overall[, is_gss := as.character(rater) == "gss"]
+  threshold <- 0.9
+  pc90_overall <- nonpersona_cumvar_dt[edu_group == "overall", .(
+    rater, pc_index, cum_total_med
+  )]
+  pc90_overall <- pc90_overall[order(pc_index),
+                               {
+                                 idx <- which(cum_total_med >= threshold)
+                                 if (length(idx)) .SD[idx[1L]] else NULL
+                               },
+                               by = rater]
+  pc90_overall <- pc90_overall[order(pc_index)]
+  top3 <- tail(pc90_overall$rater, 3)
+  bot3 <- head(pc90_overall$rater, 3)
+  keep_llm <- setdiff(unique(c(top3, bot3)), "gss")
+  
+  df_comp_overall[, highlight := as.character(rater) %in% keep_llm]
+  df_comp_overall[, color_group := ifelse(highlight, as.character(rater), "other")]
+  
+  highlight_cols <- setNames(c("dodgerblue4", "dodgerblue2", "dodgerblue"), keep_llm[seq_len(min(3, length(keep_llm)))])
+  if (length(keep_llm) > 3) {
+    extra <- keep_llm[4:length(keep_llm)]
+    highlight_cols <- c(highlight_cols, setNames(c("orangered3", "orangered2", "orange")[seq_len(length(extra))], extra))
+  }
+  highlight_cols <- c(highlight_cols, other = "grey70", gss = "black")
+  
+  p_all <- ggplot2::ggplot(
+    df_comp_overall,
+    ggplot2::aes(x = pc_index, y = cum_med, group = interaction(rater, component), colour = color_group)
+  ) +
+    ggplot2::geom_line(
+      ggplot2::aes(linetype = component),
+      linewidth = 0.7,
+      alpha = 0.8
+    ) +
+    ggplot2::scale_colour_manual(values = highlight_cols, breaks = c(keep_llm, "gss", "other"), name = NULL) +
+    ggplot2::scale_linetype_manual(name = "Component", values = c("Non-persona" = "solid", "Persona" = "dashed")) +
+    ggplot2::scale_x_continuous(breaks = pc_breaks5, minor_breaks = NULL) +
+    ggplot2::coord_cartesian(ylim = c(0, max(df_comp_overall$cum_high, na.rm = TRUE))) +
+    ggplot2::labs(
+      x = "Principal component index",
+      y = "Cumulative share of total belief variance",
+      title = ""
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position  = "right"
+    )
+  
+  print(p_all)
+  grDevices::dev.off()
+}
+
 
 ## ---- Plot 2: cumulative total share + PC count to reach 90% -------------- ##
 
@@ -1097,7 +1201,7 @@ ggplot2::ggplot(df_total, ggplot2::aes(x = pc_index)) +
   ggplot2::labs(
     x     = "Principal component index",
     y     = "Cumulative share of total belief variance",
-    title = "Cumulative explained variance by belief PCs (colour = edu × rater type)\nDotted lines + bold labels mark PCs needed to reach 90% variance"
+    title = ""
   ) +
   ggplot2::theme_minimal(base_size = 11) +
   ggplot2::theme(

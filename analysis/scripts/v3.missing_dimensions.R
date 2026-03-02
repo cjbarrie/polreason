@@ -101,7 +101,7 @@ PDF_HEIGHT        <- 10
 ## Optional: human-readable PC labels (edit as appropriate)
 ## ------------------------------------------------------------------
 # These labels are interpretive; they do not affect the numerical analysis.
-pc_labels_tmp <- jsonlite::fromJSON(txt = 'roberto_final/GSS_PC_explain.json', simplifyVector = TRUE)
+pc_labels_tmp <- jsonlite::fromJSON(txt = 'analysis/GSS_PC_explain.json', simplifyVector = TRUE)
 pc_labels <- pc_labels_tmp$axis_label
 
 ## ------------------------------------------------------------------

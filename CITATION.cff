@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this code or data, please cite the following paper."
+type: software
+title: "Replication code: Synthetic personas distort the structure of human belief systems"
+authors:
+  - family-names: Barrie
+    given-names: Christopher
+  - family-names: Cerina
+    given-names: Roberto
+year: 2026
+url: "https://osf.io/preprints/socarxiv/n7fq8_v1"
+preferred-citation:
+  type: article
+  title: "Synthetic personas distort the structure of human belief systems"
+  authors:
+    - family-names: Barrie
+      given-names: Christopher
+    - family-names: Cerina
+      given-names: Roberto
+  year: 2026
+  url: "https://osf.io/preprints/socarxiv/n7fq8_v1"
+  doi: 10.31235/osf.io/n7fq8_v1

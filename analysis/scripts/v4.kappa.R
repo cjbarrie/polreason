@@ -560,7 +560,7 @@ if (!file.exists(constraint_file)) {
         limits = c(0, 1),
         breaks = scales::pretty_breaks(5),
         labels = scales::label_number(accuracy = 0.01),
-        name   = "Effective dependence De (1 - |R|^(1/k))"
+        name   = "Effective dependence De (1 - |R|^(1/p))"
       ) +
       ggplot2::scale_fill_gradientn(
         colours = pal_cols,
@@ -599,7 +599,6 @@ if (!file.exists(constraint_file)) {
     message("Wrote 3-way plot to: ", OUTFILE_PDF_3WAY)
   }
 }
-
 
 
 

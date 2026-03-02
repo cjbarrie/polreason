@@ -95,7 +95,7 @@ create_saturn_animation <- function(
     base_viz_dir      = BASE_VIZ_DIR,
     year              = YEAR,
     prob              = 0.5,
-    quantile_seq      = seq(0.95, 0.05, by = -0.05),  # Q95 → Q5
+    quantile_seq      = seq(0.95, 0.05, by = -0.01),  # Q95 → Q5
 
     highlight_gss     = TRUE,
 
@@ -310,7 +310,7 @@ create_saturn_animation <- function(
 
     coord_equal(xlim = c(-lim, lim), ylim = c(-lim, lim), expand = FALSE) +
     labs(
-      title = "Political Constraint Distribution: {closest_state}",
+      title = "",
       x = "Standardized Dimension 1",
       y = "Standardized Dimension 2"
     ) +
@@ -332,7 +332,7 @@ create_saturn_animation <- function(
     ) +
       guides(
         color = guide_legend(
-          ncol = 5,
+          ncol = 3,
           override.aes = list(alpha = 1, linewidth = 1.5)
         )
       )
@@ -364,8 +364,8 @@ create_saturn_animation <- function(
     nframes = nframes,
     fps = fps,
     duration = duration,
-    width = 800,
-    height = 800,
+    width = 1100,
+    height = 1100,
     renderer = gifski_renderer(output_file, loop = loop)
   )
 
@@ -391,7 +391,7 @@ if (exists("BASE_OUT_DIR") && exists("BASE_VIZ_DIR") && exists("YEAR")) {
     base_viz_dir   = BASE_VIZ_DIR,
     year           = YEAR,
     prob           = 0.5,
-    quantile_seq   = seq(0.95, 0.05, by = -0.05),  # 19 frames
+    quantile_seq   = seq(0.95, 0.05, by = -0.01),  # 19 frames
 
     delta_min      = 0.10,
     top_n_total    = 10L,  # Keep top 10 most constrained models

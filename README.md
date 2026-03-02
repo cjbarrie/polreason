@@ -2,6 +2,18 @@
 
 This repository contains code and data for analyzing political constraint patterns in Large Language Model (LLM) responses to survey questions, based on synthetic personas derived from General Social Survey (GSS) data.
 
+## Replication
+
+This repository includes all code, synthetic data, pre-computed bootstrap outputs, and visualizations needed to reproduce the analysis in full. The quickest path is:
+
+```bash
+git clone <repo-url>
+cd polreason
+Rscript analysis/scripts/master.R
+```
+
+See `analysis/README.md`, `generation/README.md`, and `docs/replication_release_plan.md` for full details.
+
 ## Project Overview
 
 This project investigates how different LLMs exhibit patterns of political constraint when answering survey questions as synthetic personas. Building on della Posta's (2020) framework for measuring belief constraint, we:
@@ -32,6 +44,7 @@ polreason/
 │       └── year_2024/      # 30 CSV files, one per model
 │
 ├── analysis/               # Statistical analysis pipeline
+│   ├── README.md           # Analysis-specific guide
 │   ├── scripts/            # R analysis scripts
 │   │   ├── master.R                            # Main orchestration script
 │   │   ├── 0.config.R                          # Configuration and helpers
@@ -54,9 +67,20 @@ polreason/
 │
 ├── requirements.txt        # Python dependencies
 ├── r-requirements.txt      # R package list
+├── docs/                   # Release planning and extra documentation
 ├── .gitignore             # Git ignore rules
 └── README.md              # This file
 ```
+
+## Quick Start
+
+If you want to reproduce the analysis from the already-committed synthetic responses, the default path is:
+
+```bash
+Rscript analysis/scripts/master.R
+```
+
+Run that command from the repository root after installing the R packages listed below.
 
 ## Installation
 
@@ -106,6 +130,8 @@ The GSS cumulative data file (`gss7224_r1.dta`, 565MB) is **included locally** i
 4. **Location**: Place in `generation/data/gss7224_r1.dta`
 
 **Note**: If you only want to run the analysis pipeline (not generate new synthetic data), you can skip this step since the synthetic responses are already included in `generation/synthetic_data/`.
+
+The GSS cumulative `.dta` file should remain an external download in any public replication release unless its redistribution terms clearly permit bundling.
 
 ## Usage
 
@@ -229,20 +255,12 @@ Plus **GSS-2024** human baseline for comparison.
 
 If you use this code or data, please cite:
 
-```bibtex
-[Add your citation here when published]
-```
+> Barrie, C. & Cerina, R. (2026). Synthetic personas distort the structure of human belief systems. *SocArXiv*. https://doi.org/10.31235/osf.io/n7fq8_v1
+
+A `CITATION.cff` file is included for software citation managers.
 
 Related work:
 - della Posta, D. (2020). "Pluralistic Collapse: The 'Oil Spill' Model of Mass Opinion Polarization." *American Sociological Review*, 85(3), 507-536.
-
-## License
-
-[Add your license here - MIT, Apache 2.0, etc.]
-
-## Contact
-
-[Add contact information or link to paper/project page]
 
 ## Acknowledgments
 
@@ -294,3 +312,4 @@ To modify or extend this project:
 - **Models**: 28+ LLMs + human baseline
 - **Survey Items**: 52 questions (30 culture-war, 22 non-culture-war)
 - **Personas**: 1000 synthetic respondents per model
+- **Local Repository Size During Audit**: ~2.7 GB

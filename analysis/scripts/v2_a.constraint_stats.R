@@ -104,12 +104,14 @@ plot_half_violins_edu <- function(
     xlab,
     main,
     out_file,
-    gss_overall  = "orange",
-    gss_loedu    = "lightgoldenrod",
-    gss_hiedu    = "orangered",
-    llm_overall  = "dodgerblue",
-    llm_loedu    = "aliceblue",
-    llm_hiedu    = "dodgerblue4"
+    lolli_pad_frac   = -0.01,
+    lolli_width_frac = 0.14,
+    gss_overall  = "#FDB863",
+    gss_loedu    = "#FEE0B6",
+    gss_hiedu    = "#E08214",
+    llm_overall  = "#BDBDBD",
+    llm_loedu    = "#A6CEE3",
+    llm_hiedu    = "#1F78B4"
 ) {
   stopifnot(is.data.frame(dt))
   
@@ -191,25 +193,56 @@ plot_half_violins_edu <- function(
   op <- par(no.readonly = TRUE)
   on.exit(par(op), add = TRUE)
   
-  par(mar = c(4, 17.5, 4, 10))
+  par(mar = c(4, 18, 4, 8))
   
   plot(
     NA,
     xlim = x_range,
-    ylim = c(0.5, n_raters + 0.5),
+    ylim = c(0.5, n_raters + 0.9),
     xlab = xlab,
     ylab = "",
     yaxt = "n",
-    main = main
+    main = main,
+    bty  = "n"
   )
+  
+  usr <- par("usr")
+  segments(usr[1], usr[3], usr[2], usr[3])  # bottom
+  segments(usr[1], usr[4], usr[2], usr[4])  # top
+  segments(usr[1], usr[3], usr[1], usr[4])  # left
   
   axis(2, at = seq_len(n_raters), labels = raters_order, las = 2)
   
   grid_ticks <- pretty(x_range)
-  abline(v = grid_ticks, col = "grey90", lwd = 0.5)
+  abline(v = grid_ticks, col = "grey92", lwd = 0.45)
   
   max_width <- 0.4
   par(xpd = NA)
+  
+  # Lollipop layout (to the right of the plot area)
+  usr <- par("usr")
+  x_right <- usr[2]
+  lolli_pad    <- lolli_pad_frac * diff(usr[1:2])
+  lolli_width  <- lolli_width_frac * diff(usr[1:2])
+  lolli_center <- x_right + lolli_pad + (lolli_width / 2)
+  
+  max_abs_delta <- NA_real_
+  if (!is.null(delta_stats) && nrow(delta_stats)) {
+    max_abs_delta <- max(abs(delta_stats$delta_median), na.rm = TRUE)
+  }
+  if (!is.finite(max_abs_delta) || max_abs_delta == 0) {
+    max_abs_delta <- 1
+  }
+  
+  # Delta axis (center line only; no tick labels)
+  segments(
+    x0 = lolli_center,
+    x1 = lolli_center,
+    y0 = 0.5,
+    y1 = n_raters + 0.5,
+    col = grDevices::adjustcolor("grey70", alpha.f = 0.8),
+    lwd = 0.8
+  )
   
   draw_half <- function(vals, base_y, fill_col, median_col = fill_col) {
     vals <- vals[is.finite(vals)]
@@ -228,7 +261,7 @@ plot_half_violins_edu <- function(
     segments(
       x0 = med_val, x1 = med_val,
       y0 = base_y, y1 = base_y + max_width * 1.1,
-      lwd = 2.5, col = median_col
+      lwd = 1.8, col = median_col
     )
   }
   
@@ -263,10 +296,30 @@ plot_half_violins_edu <- function(
     if (!is.null(delta_stats) && nrow(delta_stats)) {
       drow <- delta_stats[rater == r]
       if (nrow(drow) == 1L && is.finite(drow$delta_median)) {
-        usr <- par("usr")
-        x_right <- usr[2] + 0.02 * diff(usr[1:2])
-        lab <- sprintf("delta = %.3f [%.3f, %.3f]", drow$delta_median, drow$delta_lwr, drow$delta_upr)
-        text(x = x_right, y = i, labels = lab, adj = c(0, 0.5), cex = 0.95)
+        delta_val <- drow$delta_median
+        x_end <- lolli_center + (delta_val / max_abs_delta) * (lolli_width / 2)
+        
+        sig_delta <- is.finite(drow$delta_lwr) && is.finite(drow$delta_upr) &&
+          (drow$delta_lwr > 0 || drow$delta_upr < 0)
+        delta_col <- if (sig_delta) "black" else "grey60"
+        
+        if (is.finite(drow$delta_lwr) && is.finite(drow$delta_upr)) {
+          x_lwr <- lolli_center + (drow$delta_lwr / max_abs_delta) * (lolli_width / 2)
+          x_upr <- lolli_center + (drow$delta_upr / max_abs_delta) * (lolli_width / 2)
+          segments(x0 = x_lwr, x1 = x_upr, y0 = i, y1 = i, lwd = 0.9, col = delta_col)
+          segments(x0 = x_lwr, x1 = x_lwr, y0 = i - 0.08, y1 = i + 0.08, lwd = 0.9, col = delta_col)
+          segments(x0 = x_upr, x1 = x_upr, y0 = i - 0.08, y1 = i + 0.08, lwd = 0.9, col = delta_col)
+        }
+        
+        segments(x0 = lolli_center, x1 = x_end, y0 = i, y1 = i, lwd = 1.2, col = delta_col)
+        points(x = x_end, y = i, pch = 16, cex = 0.8, col = delta_col)
+        text(
+          x = x_end,
+          y = i + 0.25,
+          labels = sprintf("%.3f", delta_val),
+          cex = 0.75,
+          col = delta_col
+        )
       }
     }
   }
@@ -632,7 +685,7 @@ if (nrow(constraint_dt)) {
     dt        = constraint_dt,
     value_col = "pc1_var_explained",
     xlab      = "Proportion of variance (attitudes + persona vars) explained by PC1",
-    main      = "PC1 Constraint by Education",
+    main      = "",
     out_file  = file.path(viz_dir, sprintf("constraint_pc1_var_explained_by_edu_%s.pdf", year))
   )
   
@@ -640,7 +693,8 @@ if (nrow(constraint_dt)) {
     dt        = constraint_dt,
     value_col = "effective_dependence",
     xlab      = "Effective dependence De (1 - |R|^(1/p))",
-    main      = "Effective Dependence by Education",
+    main      = "",
+    lolli_pad_frac = 0.01,
     out_file  = file.path(viz_dir, sprintf("constraint_effective_dependence_by_edu_%s.pdf", year))
   )
 }
